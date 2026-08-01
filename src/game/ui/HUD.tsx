@@ -190,7 +190,7 @@ function MenuBtn({ icon: Icon, label, hotkey, active, onClick }: { icon: typeof 
 
 // ---- Minimap ----
 import { useRef, useEffect } from 'react';
-import { BIOMES, sampleGround } from '@/game/world/terrain';
+import { BIOMES, sampleGround } from '@/game/world/terrainMath';
 import { SPAWN_GROUPS } from '@/game/data/monsters';
 
 function MiniMap() {

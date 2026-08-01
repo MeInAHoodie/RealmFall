@@ -1,7 +1,8 @@
 import { useRef, useEffect, useMemo } from 'react';
+import type { MutableRefObject } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
-import { clampToWorld, getGroundHeight, sampleGround } from '@/game/world/terrain';
+import { clampToWorld, getGroundHeight, sampleGround } from '@/game/world/terrainMath';
 import { useGame } from '@/game/store';
 import { CLASSES } from '@/game/data/classes';
 import { MONSTERS, BOSSES } from '@/game/data/monsters';
@@ -38,6 +39,9 @@ export function PlayerController() {
   const attackAnim = useRef(0);
   const hitAnim = useRef(0);
   const lastSkillSlot = useRef<string>('');
+  const lastSkillEffect = useRef<string>('');
+  const shake = useRef(0);
+  const lastPlayerHitAt = useRef(0);
 
   const classId = useGame((s) => s.classId);
   const getStats = useGame((s) => s.getStats);
@@ -48,8 +52,8 @@ export function PlayerController() {
   const damageMonster = useGame((s) => s.damageMonster);
   const useMana = useGame((s) => s.useMana);
   const setSkillCooldown = useGame((s) => s.setSkillCooldown);
-  const skillCooldowns = useGame((s) => s.skillCooldowns);
   const paused = useGame((s) => s.paused);
+  const showInventory = useGame((s) => s.showInventory);
 
   const def = classId ? CLASSES[classId] : CLASSES.warrior;
   const skills = def.skills.filter((s) => !s.passive);
@@ -111,6 +115,24 @@ export function PlayerController() {
     };
   }, [paused]);
 
+  // Cursor follows the inventory: free the pointer while it's open so the
+  // cursor is visible and clickable, re-lock when it closes. If the browser
+  // rejects the re-lock (no user gesture), the canvas click handler above is
+  // the fallback.
+  useEffect(() => {
+    const canvas = document.querySelector('canvas');
+    if (!canvas) return;
+    if (showInventory) {
+      if (document.pointerLockElement) document.exitPointerLock();
+    } else if (!paused && !document.pointerLockElement) {
+      try {
+        canvas.requestPointerLock();
+      } catch {
+        // Ignore: re-lock happens on the next canvas click.
+      }
+    }
+  }, [showInventory, paused]);
+
   // Mouse attack
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -133,12 +155,12 @@ export function PlayerController() {
       document.removeEventListener('contextmenu', prevent);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paused, skillCooldowns, classId]);
+  }, [paused, classId]);
 
   function triggerSkill(slot: string) {
     const skill = skillBySlot[slot];
     if (!skill) return;
-    if ((skillCooldowns[skill.id] ?? 0) > 0) return;
+    if ((useGame.getState().skillCooldowns[skill.id] ?? 0) > 0) return;
     if (skill.manaCost > 0) {
       const ok = useMana(skill.manaCost);
       if (!ok) return;
@@ -146,6 +168,8 @@ export function PlayerController() {
     setSkillCooldown(skill.id, skill.cooldown);
     attackAnim.current = 0.35;
     lastSkillSlot.current = slot;
+    lastSkillEffect.current = skill.effect ?? '';
+    shake.current = Math.max(shake.current, 0.14);
     const stats = getStats();
     const isCrit = Math.random() < stats.critChance;
     const dmg = stats.damage * skill.damage * (isCrit ? 1.8 : 1);
@@ -159,6 +183,20 @@ export function PlayerController() {
     if (!grp || !model) return;
     if (paused) return;
 
+    const now = performance.now();
+    const gs = useGame.getState();
+    // Brief hit-stop for impact weight when landing or taking a hit.
+    const hitStop = 70; // ms
+    const effectiveDt = now - gs.lastMonsterHitAt < hitStop || now - gs.playerHitAt < hitStop ? dt * 0.25 : dt;
+    // Hurt detection: react to damage events fired by the store.
+    if (gs.playerHitAt !== lastPlayerHitAt.current) {
+      lastPlayerHitAt.current = gs.playerHitAt;
+      if (gs.playerHitAt > 0) {
+        hitAnim.current = 1;
+        shake.current = Math.max(shake.current, 0.42);
+      }
+    }
+
     const stats = getStats();
     const speed = stats.speed * (input.current.sprint ? 1.6 : 1) * (input.current.jump ? 1 : 1);
     const dir = new THREE.Vector3();
@@ -171,14 +209,14 @@ export function PlayerController() {
     // Rotate movement by yaw
     const moveX = dir.x * Math.cos(yaw.current) + dir.z * Math.sin(yaw.current);
     const moveZ = -dir.x * Math.sin(yaw.current) + dir.z * Math.cos(yaw.current);
-    const [nx, nz] = clampToWorld(grp.position.x + moveX * speed * dt, grp.position.z + moveZ * speed * dt);
+    const [nx, nz] = clampToWorld(grp.position.x + moveX * speed * effectiveDt, grp.position.z + moveZ * speed * effectiveDt);
     grp.position.x = nx;
     grp.position.z = nz;
 
     // Ground follow + jump
     const groundY = getGroundHeight(grp.position.x, grp.position.z);
-    velocityY.current -= 18 * dt;
-    grp.position.y += velocityY.current * dt;
+    velocityY.current -= 18 * effectiveDt;
+    grp.position.y += velocityY.current * effectiveDt;
     if (grp.position.y <= groundY) {
       grp.position.y = groundY;
       velocityY.current = 0;
@@ -197,7 +235,7 @@ export function PlayerController() {
 
     // Attack/hit animation
     if (attackAnim.current > 0) {
-      attackAnim.current = Math.max(0, attackAnim.current - dt);
+      attackAnim.current = Math.max(0, attackAnim.current - effectiveDt);
       const t = 1 - attackAnim.current / 0.35;
       if (classId === 'warrior') model.rotation.z = Math.sin(t * Math.PI) * 0.6;
       else if (classId === 'mage') model.rotation.x = Math.sin(t * Math.PI) * 0.3;
@@ -206,11 +244,21 @@ export function PlayerController() {
       model.rotation.z = THREE.MathUtils.lerp(model.rotation.z, 0, 0.2);
       model.rotation.x = THREE.MathUtils.lerp(model.rotation.x, 0, 0.2);
     }
-    if (hitAnim.current > 0) hitAnim.current = Math.max(0, hitAnim.current - dt);
+    // Hurt stagger: recoil lean + scale pulse
+    if (hitAnim.current > 0) {
+      hitAnim.current = Math.max(0, hitAnim.current - effectiveDt * 2.5);
+      const t = hitAnim.current;
+      model.rotation.z += Math.sin(t * Math.PI * 3) * 0.3 * t;
+      model.rotation.x -= Math.sin(t * Math.PI * 2) * 0.14 * t;
+      const p = 1 + t * 0.08;
+      model.scale.set(p, p, p);
+    } else {
+      model.scale.set(1, 1, 1);
+    }
 
     // Walk bob
     if (dir.lengthSq() > 0 && grounded.current) {
-      onGround.current += dt * 10;
+      onGround.current += effectiveDt * 10;
       model.position.y = Math.abs(Math.sin(onGround.current)) * 0.12;
     } else {
       model.position.y = THREE.MathUtils.lerp(model.position.y, 0, 0.2);
@@ -227,10 +275,18 @@ export function PlayerController() {
     camCurrent.current.lerp(camTarget.current.clone().add(camOffset), 0.12);
     camera.position.copy(camCurrent.current);
     camera.lookAt(grp.position.x, grp.position.y + 1.2, grp.position.z);
+    // Camera shake (decays over real time so it recovers during hit-stop)
+    if (shake.current > 0.001) {
+      const s = shake.current;
+      camera.position.x += (Math.random() - 0.5) * s * 0.55;
+      camera.position.y += (Math.random() - 0.5) * s * 0.55;
+      camera.rotation.z += (Math.random() - 0.5) * s * 0.06;
+    }
+    shake.current = Math.max(0, shake.current - dt * 3.2);
 
     // Game ticks
-    tickCooldowns(dt);
-    tickMonsters(dt, [grp.position.x, grp.position.y, grp.position.z], performance.now());
+    tickCooldowns(effectiveDt);
+    tickMonsters(effectiveDt, [grp.position.x, grp.position.y, grp.position.z], now);
     emitPlayerPos(grp.position.x, grp.position.z);
 
     // Region detection
@@ -247,8 +303,44 @@ export function PlayerController() {
     <group ref={groupRef} position={[0, getGroundHeight(0, 0), 6]}>
       <group ref={modelRef}>
         <CharacterModel classId={def.id} primary={def.primaryColor} accent={def.accentColor} />
+        <SlashArc attackAnim={attackAnim} lastSkillEffect={lastSkillEffect} color={def.accentColor} />
       </group>
     </group>
+  );
+}
+
+// Visible crescent that sweeps in front of the player during melee attacks.
+function SlashArc({ attackAnim, lastSkillEffect, color }: { attackAnim: MutableRefObject<number>; lastSkillEffect: MutableRefObject<string>; color: string }) {
+  const ref = useRef<THREE.Mesh>(null);
+
+  useFrame(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    const t = attackAnim.current;
+    const melee = lastSkillEffect.current === 'slash' || lastSkillEffect.current === 'shield';
+    const active = melee && t > 0;
+    mesh.visible = active;
+    if (!active) return;
+    const p = 1 - t / 0.35;
+    const mat = mesh.material as THREE.MeshBasicMaterial;
+    mat.opacity = Math.sin(Math.min(1, p * 1.5) * Math.PI) * 0.85;
+    const s = 0.65 + p * 0.6;
+    mesh.scale.set(s, s, s);
+    mesh.rotation.z = p * 0.9;
+  });
+
+  return (
+    <mesh ref={ref} position={[0, 1.3, 1.35]} rotation={[Math.PI * 0.33, 0, 0]} visible={false}>
+      <torusGeometry args={[1.05, 0.07, 8, 28, Math.PI * 1.15]} />
+      <meshBasicMaterial
+        color={color}
+        transparent
+        opacity={0}
+        side={THREE.DoubleSide}
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+      />
+    </mesh>
   );
 }
 
@@ -269,6 +361,15 @@ export function CharacterModel({ classId, primary, accent }: { classId: string; 
       <mesh position={[0, 1.75, 0]} castShadow>
         <sphereGeometry args={[0.3, 12, 10]} />
         <meshStandardMaterial color="#f0c9a0" flatShading roughness={0.8} />
+      </mesh>
+      {/* Face: two eyes mark the model's forward (+Z) direction */}
+      <mesh position={[0.09, 1.77, 0.26]}>
+        <sphereGeometry args={[0.05, 8, 6]} />
+        <meshStandardMaterial color="#1a1a1a" roughness={0.4} />
+      </mesh>
+      <mesh position={[-0.09, 1.77, 0.26]}>
+        <sphereGeometry args={[0.05, 8, 6]} />
+        <meshStandardMaterial color="#1a1a1a" roughness={0.4} />
       </mesh>
       {/* Cape / accent */}
       <mesh position={[0, 1.0, -0.25]} castShadow>

@@ -29,7 +29,7 @@ export function FloatingDamageLayer() {
               left: `${screen.x}px`,
               top: `${screen.y}px`,
               color: d.color,
-              fontSize: d.crit ? '28px' : '18px',
+              fontSize: d.crit ? '32px' : '20px',
               textShadow: '0 2px 6px rgba(0,0,0,0.8)',
               transform: 'translate(-50%, 0)',
             }}>

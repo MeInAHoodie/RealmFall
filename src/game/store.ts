@@ -20,6 +20,15 @@ export interface FloatingDamage {
   crit: boolean;
 }
 
+export interface ImpactFx {
+  id: number;
+  x: number;
+  y: number;
+  z: number;
+  color: string;
+  born: number;
+}
+
 export interface PlayerEntity {
   id: string;
   name: string;
@@ -83,6 +92,10 @@ interface GameState {
   equipped: Partial<Record<EquipSlot, string>>;
   monsters: Record<string, MonsterInstance>;
   floatingDamage: FloatingDamage[];
+  impacts: ImpactFx[];
+  playerHitFlash: number;
+  playerHitAt: number;
+  lastMonsterHitAt: number;
   nearbyPlayers: PlayerEntity[];
   log: LogEntry[];
   worldTime: number; // 0..1 day cycle
@@ -123,6 +136,7 @@ interface GameState {
   tickMonsters: (dt: number, playerPos: [number, number, number], now: number) => void;
   addFloatingDamage: (text: string, x: number, y: number, z: number, color: string, crit: boolean) => void;
   clearFloatingDamage: (id: number) => void;
+  addImpact: (x: number, y: number, z: number, color: string) => void;
   setWorldTime: (t: number) => void;
   setWeather: (w: GameState['weather']) => void;
   setRegion: (r: string) => void;
@@ -146,6 +160,7 @@ interface GameState {
 let uidCounter = 0;
 const uid = () => `u${++uidCounter}`;
 let dmgCounter = 0;
+let impactCounter = 0;
 let logCounter = 0;
 let chatCounter = 0;
 
@@ -173,6 +188,10 @@ export const useGame = create<GameState>((set, get) => ({
   equipped: {},
   monsters: {},
   floatingDamage: [],
+  impacts: [],
+  playerHitFlash: 0,
+  playerHitAt: 0,
+  lastMonsterHitAt: 0,
   nearbyPlayers: [],
   log: [{ id: ++logCounter, kind: 'system', text: 'Welcome to Realmfall.', time: Date.now() }],
   worldTime: 0.32,
@@ -254,7 +273,11 @@ export const useGame = create<GameState>((set, get) => ({
   damagePlayer: (amount) => {
     const { currentHealth } = get();
     const hp = Math.max(0, currentHealth - amount);
-    set({ currentHealth: hp });
+    set({
+      currentHealth: hp,
+      playerHitFlash: Math.min(1, 0.55 + amount / 40),
+      playerHitAt: performance.now(),
+    });
     if (hp <= 0) {
       set({ paused: true });
       get().logEvent('combat', 'You were defeated. Respawning at the village...');
@@ -399,8 +422,10 @@ export const useGame = create<GameState>((set, get) => ({
     set({
       monsters: { ...get().monsters, [id]: { ...m, health: hp, hitFlash: 1, state: hp <= 0 ? 'dead' : m.state === 'idle' ? 'chase' : m.state, target: 'local', respawnAt: hp <= 0 ? Date.now() + (m.isBoss ? 120 : 20) * 1000 : 0 } },
       damageTotal: get().damageTotal + dmg,
+      lastMonsterHitAt: performance.now(),
     });
     get().addFloatingDamage(String(dmg), m.position[0], m.position[1] + m.scale * 1.5, m.position[2], crit ? '#ffd166' : '#ffffff', crit);
+    get().addImpact(m.position[0], m.position[1] + m.scale * 0.9, m.position[2], crit ? '#ffd166' : '#ffffff');
     if (hp <= 0) {
       const def = MONSTER_LOOKUP[m.defId];
       const loot = rollLoot(def.loot);
@@ -487,6 +512,15 @@ export const useGame = create<GameState>((set, get) => ({
     setTimeout(() => get().clearFloatingDamage(id), 1000);
   },
   clearFloatingDamage: (id) => set({ floatingDamage: get().floatingDamage.filter((f) => f.id !== id) }),
+  addImpact: (x, y, z, color) => {
+    const now = performance.now();
+    set({
+      impacts: [
+        ...get().impacts.filter((i) => now - i.born < 400),
+        { id: ++impactCounter, x, y, z, color, born: now },
+      ],
+    });
+  },
 
   setWorldTime: (t) => set({ worldTime: t }),
   setWeather: (w) => set({ weather: w }),
@@ -512,14 +546,16 @@ export const useGame = create<GameState>((set, get) => ({
   setSkillCooldown: (skillId, seconds) => set({ skillCooldowns: { ...get().skillCooldowns, [skillId]: seconds } }),
   tickCooldowns: (dt) => {
     const cd = get().skillCooldowns;
+    const keys = Object.keys(cd);
+    if (keys.length === 0) return;
     const next: Record<string, number> = {};
-    let changed = false;
     for (const [k, v] of Object.entries(cd)) {
       const n = Math.max(0, v - dt);
-      if (n > 0) next[k] = n;
-      else changed = true;
+      if (n > 1e-9) next[k] = n;
     }
-    if (changed || Object.keys(cd).length !== Object.keys(next).length) set({ skillCooldowns: next });
+    set({ skillCooldowns: next });
+    const { playerHitFlash } = get();
+    if (playerHitFlash > 0) set({ playerHitFlash: Math.max(0, playerHitFlash - dt * 2.5) });
   },
   showToast: (text, sub) => {
     const id = ++uidCounter;

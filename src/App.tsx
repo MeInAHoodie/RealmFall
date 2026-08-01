@@ -14,6 +14,7 @@ export default function App() {
   const toggleScoreboard = useGame((s) => s.toggleScoreboard);
   const togglePause = useGame((s) => s.togglePause);
   const paused = useGame((s) => s.paused);
+  const showInventory = useGame((s) => s.showInventory);
 
   // Global hotkeys for panels (only during gameplay)
   useEffect(() => {
@@ -22,12 +23,16 @@ export default function App() {
       if (e.code === 'KeyI') { toggleInventory(); e.preventDefault(); }
       else if (e.code === 'KeyM') { toggleMap(); e.preventDefault(); }
       else if (e.code === 'Tab') { toggleScoreboard(); e.preventDefault(); }
-      else if (e.code === 'Escape') { togglePause(); e.preventDefault(); }
+      else if (e.code === 'Escape') {
+        if (showInventory) toggleInventory();
+        else togglePause();
+        e.preventDefault();
+      }
       else if (e.code === 'Enter') { toggleChat(); e.preventDefault(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [screen, toggleInventory, toggleMap, toggleChat, toggleScoreboard, togglePause]);
+  }, [screen, toggleInventory, toggleMap, toggleChat, toggleScoreboard, togglePause, showInventory]);
 
   if (screen === 'title') {
     return <TitleScreen />;
@@ -40,6 +45,7 @@ export default function App() {
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-ink-900">
       <GameScene />
+      <DamageVignette />
       <HUD />
       <GameLog />
       <RegionBanner />
@@ -52,6 +58,18 @@ export default function App() {
       <Crosshair />
       <ControlsHint />
     </div>
+  );
+}
+
+// Red edge glow that pulses when the local player takes damage.
+function DamageVignette() {
+  const playerHitFlash = useGame((s) => s.playerHitFlash);
+  if (playerHitFlash <= 0.02) return null;
+  return (
+    <div
+      className="absolute inset-0 z-10 pointer-events-none damage-vignette"
+      style={{ opacity: Math.min(1, playerHitFlash * 0.9) }}
+    />
   );
 }
 

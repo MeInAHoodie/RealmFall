@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { sampleGround, getGroundHeight } from './terrain';
+import { sampleGround, getGroundHeight } from './terrainMath';
 
 // ---- Deterministic scatter helper ----
 function seeded(seed: number) {
