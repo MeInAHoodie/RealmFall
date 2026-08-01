@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { WORLD_SIZE, WORLD_SEGMENTS, HALF_WORLD, sampleGround } from '@/game/world/terrain';
+import { WORLD_SIZE, WORLD_SEGMENTS, HALF_WORLD, sampleGround } from '@/game/world/terrainMath';
 
 export function Terrain() {
   const geometry = useMemo(() => {

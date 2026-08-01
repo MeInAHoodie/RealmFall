@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { useGame, type MonsterInstance } from '@/game/store';
 import { MONSTERS, BOSSES, SPAWN_GROUPS } from '@/game/data/monsters';
-import { getGroundHeight } from '@/game/world/terrain';
+import { getGroundHeight } from '@/game/world/terrainMath';
 import { bindMonsterSource, updateProjectiles, getProjectiles } from '@/game/combat/skills';
 
 export function MonsterManager() {
@@ -39,6 +39,7 @@ export function MonsterManager() {
         <MonsterView key={m.id} m={m} />
       ))}
       <Projectiles />
+      <ImpactRings />
     </group>
   );
 }
@@ -74,7 +75,7 @@ function MonsterView({ m }: { m: MonsterInstance }) {
 
   return (
     <group ref={ref} position={m.position}>
-      <group ref={bobRef} scale={m.scale}>
+      <group ref={bobRef} scale={m.scale * (1 + m.hitFlash * 0.4)}>
         <MonsterShape kind={def?.kind ?? 'slime'} color={m.color} hitFlash={m.hitFlash} dead={dead} />
       </group>
       {/* Health bar */}
@@ -390,4 +391,46 @@ function createProjectileMesh(effect: string): THREE.Mesh {
   const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.8, flatShading: true });
   const mesh = new THREE.Mesh(geo, mat);
   return mesh;
+}
+
+// ---- Impact shockwave rings (spawned on every landed hit) ----
+function ImpactRings() {
+  const impacts = useGame((s) => s.impacts);
+  const groupRef = useRef<THREE.Group>(null);
+  const meshes = useRef<Map<number, THREE.Mesh>>(new Map());
+
+  useFrame(() => {
+    const grp = groupRef.current;
+    if (!grp) return;
+    const now = performance.now();
+    const seen = new Set<number>();
+    for (const imp of impacts) {
+      seen.add(imp.id);
+      let mesh = meshes.current.get(imp.id);
+      if (!mesh) {
+        mesh = new THREE.Mesh(
+          new THREE.RingGeometry(0.7, 1.0, 24),
+          new THREE.MeshBasicMaterial({ color: imp.color, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
+        );
+        mesh.rotation.x = -Math.PI / 2;
+        grp.add(mesh);
+        meshes.current.set(imp.id, mesh);
+      }
+      const t = Math.min(1, (now - imp.born) / 350);
+      mesh.position.set(imp.x, imp.y + 0.25, imp.z);
+      const s = 0.6 + t * 2.6;
+      mesh.scale.set(s, s, 1);
+      (mesh.material as THREE.MeshBasicMaterial).opacity = (1 - t) * 0.9;
+    }
+    for (const [id, mesh] of meshes.current) {
+      if (!seen.has(id)) {
+        grp.remove(mesh);
+        mesh.geometry.dispose();
+        (mesh.material as THREE.Material).dispose();
+        meshes.current.delete(id);
+      }
+    }
+  });
+
+  return <group ref={groupRef} />;
 }

@@ -84,7 +84,7 @@ function spawnProjectile(
   effect: string,
   opts: { pierce?: boolean; speed?: number; yOffset?: number; arc?: number } = {}
 ) {
-  const dir = new THREE.Vector3(Math.sin(yaw), opts.arc ?? 0, Math.cos(yaw)).normalize();
+  const dir = new THREE.Vector3(-Math.sin(yaw), opts.arc ?? 0, -Math.cos(yaw)).normalize();
   const pos = new THREE.Vector3(origin.x, origin.y + (opts.yOffset ?? 1.2), origin.z);
   projectiles.push({
     id: `proj_${++projId}`,
@@ -124,7 +124,7 @@ export function castSkill(
       // Melee arc hit — instantly damage nearby enemies in front
       if (!getMonstersFn) return;
       const monsters = getMonstersFn();
-      const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+      const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
       for (const [mid, m] of Object.entries(monsters)) {
         if (m.state === 'dead') continue;
         const dx = m.position[0] - origin.x;

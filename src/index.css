@@ -89,6 +89,12 @@ canvas {
   animation: dmgFloat 1s ease-out forwards;
 }
 
+/* Red damage vignette (player taking damage) */
+.damage-vignette {
+  background: radial-gradient(ellipse at center, transparent 42%, rgba(255, 45, 45, 0.6) 100%);
+  transition: opacity 0.12s ease-out;
+}
+
 /* Rarity glow */
 .rarity-glow-common { box-shadow: 0 0 0 1px rgba(203,213,225,0.25); }
 .rarity-glow-uncommon { box-shadow: 0 0 8px rgba(107,168,79,0.4); }
