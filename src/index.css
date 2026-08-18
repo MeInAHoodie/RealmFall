@@ -1,0 +1,98 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: #0a0e16;
+  color: #e6edf3;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Refined scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(245, 214, 138, 0.25);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 214, 138, 0.45);
+}
+
+/* Pixel-perfect canvas */
+canvas {
+  display: block;
+  outline: none;
+  touch-action: none;
+}
+
+@layer components {
+  .panel {
+    @apply bg-ink-800/85 backdrop-blur-md border border-white/5 rounded-xl shadow-innerhud;
+  }
+  .panel-bright {
+    @apply bg-ink-700/90 backdrop-blur-md border border-gold-500/20 rounded-xl;
+  }
+  .hud-label {
+    @apply font-display tracking-wide text-xs uppercase text-gold-400/80;
+  }
+  .btn-gold {
+    @apply font-display tracking-wider uppercase text-sm px-5 py-2.5 rounded-md
+      bg-gradient-to-b from-gold-500 to-gold-600 text-ink-900
+      border border-gold-400/40 shadow-glow
+      transition-all duration-200 hover:from-gold-400 hover:to-gold-500
+      active:translate-y-px disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-ghost {
+    @apply font-display tracking-wider uppercase text-sm px-4 py-2 rounded-md
+      bg-white/5 text-white/70 border border-white/10
+      transition-all duration-200 hover:bg-white/10 hover:text-white
+      active:translate-y-px;
+  }
+  .divider {
+    @apply h-px w-full bg-gradient-to-r from-transparent via-gold-500/30 to-transparent;
+  }
+}
+
+/* Health/mana/xp bar fill animation */
+.bar-fill {
+  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Damage number float */
+@keyframes dmgFloat {
+  0% { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
+  20% { transform: translate(-50%, -8px) scale(1.1); opacity: 1; }
+  100% { transform: translate(-50%, -60px) scale(1); opacity: 0; }
+}
+.dmg-float {
+  animation: dmgFloat 1s ease-out forwards;
+}
+
+/* Rarity glow */
+.rarity-glow-common { box-shadow: 0 0 0 1px rgba(203,213,225,0.25); }
+.rarity-glow-uncommon { box-shadow: 0 0 8px rgba(107,168,79,0.4); }
+.rarity-glow-rare { box-shadow: 0 0 10px rgba(73,194,255,0.45); }
+.rarity-glow-epic { box-shadow: 0 0 12px rgba(192,132,252,0.5); }
+.rarity-glow-legendary { box-shadow: 0 0 14px rgba(245,166,35,0.55); }
+.rarity-glow-mythic { box-shadow: 0 0 16px rgba(255,77,109,0.6); }
